@@ -7,7 +7,7 @@ from os.path import join, isfile, isdir
 from collections import OrderedDict, namedtuple
 from types import FunctionType
 import xarray
-from typing import Union, List, OrderedDict
+from typing import Union, List, OrderedDict, Optional
 from glob import glob
 from . import weather as rk_weather
 
@@ -406,7 +406,7 @@ def _split_locs(placements, groups):
             yield placements.loc[loc_group[:]]
 
 
-def distribute_workflow(workflow_function: FunctionType, placements: pd.DataFrame, jobs: int = 2, max_batch_size: int = None, intermediate_output_dir: str = None, **kwargs) -> xarray.Dataset:
+def distribute_workflow(workflow_function: FunctionType, placements: pd.DataFrame, jobs: Optional[int] = 2, max_batch_size: Optional[int] = None, intermediate_output_dir: Optional[str] = None, view: Optional['ipyparallel.client.view.View'] = None, **kwargs) -> xarray.Dataset:
     """Distributes a RESKit simulation workflow across multiple CPUs
 
     Parallelism is achieved by breaking up the placements dataframe into placement groups via  
@@ -442,6 +442,10 @@ def distribute_workflow(workflow_function: FunctionType, placements: pd.DataFram
         In case of very large outputs (which are too large to be joined into a singular XArray dataset), 
           use this to write the individual simulation results to the specified directory  
         - By default None
+    
+    view : ipyparallel.client.view.View, optional
+        If given, jobs are scheduled across the view instead of a new multiprocessing pool,
+        ignores *jobs* argument and instead uses all machines in view
 
     **kwargs:
         All all key word arguments are passed on as constants to each simulation
@@ -482,33 +486,43 @@ def distribute_workflow(workflow_function: FunctionType, placements: pd.DataFram
         for placement_sub_group in _split_locs(placement_group, kmeans_groups_level2):
             placement_groups.append(placement_sub_group)
 
-    # Do simulations
-    pool = Pool(jobs)
+    group_and_kwargs = (
+        (
+            placement_group,
+            kwargs if intermediate_output_dir is None else
+            {**kwargs, 'output_netcdf_path': join(intermediate_output_dir, "simulation_group_{:05d}.nc".format(gid))}
+        )
+        for gid, placement_group in enumerate(placement_groups)
+    )
 
-    results = []
-    for gid, placement_group in enumerate(placement_groups):
-        kwargs_ = kwargs.copy()
-        if intermediate_output_dir is not None:
-            kwargs_['output_netcdf_path'] = join(intermediate_output_dir, "simulation_group_{:05d}.nc".format(gid))
+    if view is None:
+        # Do simulations
+        pool = Pool(jobs)
 
-        results.append(pool.apply_async(
-            func=workflow_function,
-            args=(placement_group, ),
-            kwds=kwargs_
-        ))
-        #results.append(workflow_function(placement_group, **kwargs_ ))
+        results = []
+        for placement_group, kwargs in enumerate(group_and_kwargs):
+            results.append(pool.apply_async(
+                func=workflow_function,
+                args=(placement_group,),
+                kwds=kwargs
+            ))
 
-    xdss = []
-    for result in results:
-        xdss.append(result.get())
+        xdss = []
+        for result in results:
+            xdss.append(result.get())
 
-    pool.close()
-    pool.join()
+        pool.close()
+        pool.join()
+    else:
+        def f(x):
+            placement_group, kwargs = x
+            return workflow_function(placement_group, **kwargs)
+
+        xdss = view.map(f, group_and_kwargs).get()
 
     if intermediate_output_dir is None:
         return xarray.concat(xdss, dim="location").sortby('location')
     else:
-        # return load_workflow_result(xdss)
         return xdss
 
 
