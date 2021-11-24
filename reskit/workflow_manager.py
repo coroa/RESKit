@@ -516,7 +516,7 @@ def distribute_workflow(
 
     """
     import xarray
-    from multiprocessing import Pool
+    from joblib import Parallel, delayed
 
     assert isinstance(placements, pd.DataFrame)
     assert ("lon" in placements.columns and "lat" in placements.columns) or (
@@ -527,18 +527,18 @@ def distribute_workflow(
     print("SPLITTING INTO SIMULATION GROUPS...")
     if "geom" in placements.columns:
         locs = gk.LocationSet(placements)
-        placements["lat"] = locs.lats
-        placements["lon"] = locs.lons
-        del placements["geom"]
+        placements = placements.assign(lat=locs.lats, lon=locs.lons).drop(
+            "geom", axis=1
+        )
     else:
         locs = gk.LocationSet(
             np.column_stack([placements.lon.values, placements.lat.values])
         )
 
     if not "location" in placements.columns:
-        placements["location"] = np.arange(placements.shape[0])
+        placements = placements.assign(location=np.arange(len(placements)))
 
-    placements.index = locs
+    placements = placements.set_axis(locs, axis="index")
 
     if max_batch_size is None:
         max_batch_size = int(np.ceil(placements.shape[0] / jobs))
@@ -578,40 +578,32 @@ def distribute_workflow(
 
     # Do simulations
     print("SUBMITTING JOBS")
-    pool = Pool(jobs)
 
-    results = []
-    for gid, placement_group in enumerate(placement_groups):
-        kwargs_ = kwargs.copy()
-        if intermediate_output_dir is not None:
-            output_netcdf_path = join(
-                intermediate_output_dir, "simulation_group_{:05d}.nc".format(gid)
+    def submit_placement_groups(placement_groups):
+        for gid, placement_group in enumerate(placement_groups):
+            if intermediate_output_dir is not None:
+                output_netcdf_path = join(
+                    intermediate_output_dir, "simulation_group_{:05d}.nc".format(gid)
+                )
+                if skip_existing and isfile(output_netcdf_path):
+                    continue
+            else:
+                output_netcdf_path = None
+
+            yield delayed(workflow_function)(
+                placement_group, output_netcdf_path=output_netcdf_path, **kwargs
             )
-            if skip_existing and isfile(output_netcdf_path):
-                continue
-            kwargs_["output_netcdf_path"] = output_netcdf_path
 
-        results.append(
-            pool.apply_async(
-                func=workflow_function, args=(placement_group,), kwds=kwargs_
-            )
-        )
+    results = Parallel(n_jobs=jobs)(submit_placement_groups(placement_groups))
 
-    xdss = []
     for result in results:
-        output = result.get()
-        xdss.append(output)
         if intermediate_output_dir is not None:
-            print(f"  FINISHED: {output}")
-
-    pool.close()
-    pool.join()
+            print(f"  FINISHED: {result}")
 
     if intermediate_output_dir is None:
-        return xarray.concat(xdss, dim="location").sortby("location")
+        return xarray.concat(results, dim="location").sortby("location")
     else:
-        # return load_workflow_result(xdss)
-        return xdss
+        return results
 
 
 def load_workflow_result(datasets, loader=xarray.load_dataset, sortby="location"):
