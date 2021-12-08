@@ -144,7 +144,7 @@ def offshore_wind_merra_caglayan2019(
 
 
 def offshore_wind_era5_unvalidated(
-    placements, era5_path, output_netcdf_path=None, output_variables=None
+    placements, era5_path, gwa_100m_path=None, output_netcdf_path=None, output_variables=None
 ):
     """
     Simulates offshore wind generation using NASA's ERA5 database [1].
@@ -155,6 +155,8 @@ def offshore_wind_era5_unvalidated(
         A Dataframe object with the parameters needed by the simulation.
     era5_path : str
         Path to the ERA5 data.
+    gwa_100m_path : str, optional
+        Path to the Global Wind Atlas at 100m [2] raster file.
     output_netcdf_path : str, optional
         Path to a directory to put the output files, by default None
     output_variables : str, optional
@@ -168,6 +170,7 @@ def offshore_wind_era5_unvalidated(
     Sources
     ------
     [1] European Centre for Medium-Range Weather Forecasts. (2019). ERA5 dataset. https://www.ecmwf.int/en/forecasts/datasets/reanalysis-datasets/era5.
+    [2] DTU Wind Energy. (2019). Global Wind Atlas. https://globalwindatlas.info/
 
     """
     wf = WindWorkflowManager(placements)
@@ -179,6 +182,13 @@ def offshore_wind_era5_unvalidated(
         set_time_index=True,
         verbose=False,
     )
+
+    if gwa_100m_path is not None:
+        wf.adjust_variable_to_long_run_average(
+            variable="elevated_wind_speed",
+            source_long_run_average=rk_weather.Era5Source.LONG_RUN_AVERAGE_WINDSPEED,
+            real_long_run_average=gwa_100m_path,
+        )
 
     wf.set_roughness(0.0002)
 
