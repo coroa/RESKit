@@ -381,9 +381,11 @@ def offshore_bos(cp, rd, hh, depth, distance_to_shore, distance_to_bus, foundati
         mooringAndAnchorCost = mooringLength * mooringCostRate + anchorCost
 
     if fixedType:
-        secondarySteelSubstructureMass = 40 + (0.8 * (18 + depth))
-        # Subtract 5 for light structures/ small capacities
-        secondarySteelSubstructureMass -= (cp <= 4) * 5
+        secondarySteelSubstructureMass = (
+            40 + (0.8 * (18 + depth))
+            # Subtract 5 for light structures/ small capacities
+            - (cp <= 4) * 5
+        )
 
     elif foundation == 'spar':
         secondarySteelSubstructureMass = np.exp(3.58 + 0.196 * np.power(cp, 0.5) * np.log(cp) + 0.00001 * depth * np.log(depth))
