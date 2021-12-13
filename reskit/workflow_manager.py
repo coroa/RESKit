@@ -505,7 +505,7 @@ def split_placements(
     placements = placements.set_axis(locs, axis="index")
 
     if max_batch_size is None:
-        max_batch_size = int(np.ceil(placements.shape[0] / jobs))
+        max_batch_size = int(np.ceil(placements.shape[0] / jobs / 1.7))
 
     if not isinstance(max_batch_size, tuple):
         max_batch_size = max_batch_size, max_batch_size
