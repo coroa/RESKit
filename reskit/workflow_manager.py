@@ -7,7 +7,7 @@ from os.path import join, isfile, isdir
 from collections import OrderedDict, namedtuple
 from types import FunctionType
 import xarray
-from typing import Union, List, OrderedDict
+from typing import Union, List, OrderedDict, Optional, Iterable
 from glob import glob
 from . import weather as rk_weather
 
@@ -455,31 +455,13 @@ def _split_locs(placements, groups):
             yield placements.loc[loc_group[:]]
 
 
-def distribute_workflow(
-    workflow_function: FunctionType,
-    placements: pd.DataFrame,
-    jobs: int = 2,
-    max_batch_size: int = None,
-    intermediate_output_dir: str = None,
-    skip_existing=False,
-    **kwargs,
-) -> xarray.Dataset:
-    """Distributes a RESKit simulation workflow across multiple CPUs
-
-    Parallelism is achieved by breaking up the placements dataframe into placement groups via  
-      KMeans grouping  
+def split_placements(
+    placements: pd.DataFrame, jobs: int = 2, max_batch_size: Optional[int] = None
+) -> List[pd.DataFrame]:
+    """Break up the placements dataframe into placement groups via KMeans grouping  
 
     Parameters
     ----------
-    workflow_function : FunctionType
-        The workflow function to be parallelized
-        - All RESKit workflow functions should be suitable here
-        - If you want to make your own function, the only requirement is that its first argument
-          should be a pandas DataFrame in the form of a placements table (i.e. has a 'lat' and 
-          'lon' column) 
-        - Don't forget that that all inputs required for the workflow function are still required,
-          and are passed on as constants through any specified `kwargs`
-
     placements : pandas.DataFrame
         A DataFrame describing the placements to be simulated
         For example, if you are simulating wind turbines, the following columns are likely required:
@@ -495,29 +477,11 @@ def distribute_workflow(
           overall simulation time)  
         - By default None
 
-    intermediate_output_dir : str, optional
-        In case of very large outputs (which are too large to be joined into a singular XArray dataset), 
-          use this to write the individual simulation results to the specified directory  
-        - By default None
-
-    skip_existing : bool, optional
-        If True, then simulation groups will be skipped if there output file already exists
-        - !!Use with Caution!! If either the placements or `max_bach_size` changes between simulation attempts, then the simulation groups will not be the same, and thus using this argument will not behave properly
-        - Default: False
-
-    **kwargs:
-        All all key word arguments are passed on as constants to each simulation
-        - Use these to set the required arguments for the given `workflow_function`
-
     Returns
     -------
-    xarray.Dataset
-        An XArray Dataset which contains the combined results of the distributed simulations
-
+    List[pd.DataFrame]
+        Placement groups
     """
-    import xarray
-    from joblib import Parallel, delayed
-
     assert isinstance(placements, pd.DataFrame)
     assert ("lon" in placements.columns and "lat" in placements.columns) or (
         "geom" in placements.columns
@@ -575,6 +539,80 @@ def distribute_workflow(
                 placement_groups.append(placement_sub_group)
 
     print(f"  Found: {len(placement_groups)} simulation groups")
+
+    return placement_groups
+
+
+def distribute_workflow(
+    workflow_function: FunctionType,
+    placements: Union[pd.DataFrame,Iterable[pd.DataFrame]],
+    jobs: int = 2,
+    max_batch_size: int = None,
+    intermediate_output_dir: str = None,
+    skip_existing=False,
+    **kwargs,
+) -> xarray.Dataset:
+    """Distributes a RESKit simulation workflow across multiple CPUs
+
+    Parallelism is achieved by breaking up the placements dataframe into placement groups via  
+      KMeans grouping  
+
+    Parameters
+    ----------
+    workflow_function : FunctionType
+        The workflow function to be parallelized
+        - All RESKit workflow functions should be suitable here
+        - If you want to make your own function, the only requirement is that its first argument
+          should be a pandas DataFrame in the form of a placements table (i.e. has a 'lat' and 
+          'lon' column) 
+        - Don't forget that that all inputs required for the workflow function are still required,
+          and are passed on as constants through any specified `kwargs`
+
+    placements : pandas.DataFrame
+        A DataFrame describing the placements to be simulated
+        For example, if you are simulating wind turbines, the following columns are likely required:
+            ['lon','lat','capacity','hub_height','rotor_diam',]
+
+    jobs : int, optional
+        The number of parallel jobs 
+        - By default 2
+
+    max_batch_size : int, optional
+        If given, limits the maximum number of total placements which are simulated in parallel
+        - Use this to reduce the memory requirements of the simulations (in turn increasing 
+          overall simulation time)  
+        - By default None
+
+    intermediate_output_dir : str, optional
+        In case of very large outputs (which are too large to be joined into a singular XArray dataset), 
+          use this to write the individual simulation results to the specified directory  
+        - By default None
+
+    skip_existing : bool, optional
+        If True, then simulation groups will be skipped if there output file already exists
+        - !!Use with Caution!! If either the placements or `max_bach_size` changes between simulation attempts, then the simulation groups will not be the same, and thus using this argument will not behave properly
+        - Default: False
+
+    **kwargs:
+        All all key word arguments are passed on as constants to each simulation
+        - Use these to set the required arguments for the given `workflow_function`
+
+    Returns
+    -------
+    xarray.Dataset
+        An XArray Dataset which contains the combined results of the distributed simulations
+    """
+    import xarray
+    from joblib import Parallel, delayed
+
+    if isinstance(placements, pd.DataFrame):
+        placement_groups = split_placements(placements, jobs=jobs, max_batch_size=max_batch_size)
+    else:
+        placement_groups = list(placements)
+        assert all(
+            isinstance(g, pd.DataFrame) and ("lon" in g.columns and "lat" in g.columns)
+            for g in placement_groups
+        )
 
     # Do simulations
     print("SUBMITTING JOBS")
