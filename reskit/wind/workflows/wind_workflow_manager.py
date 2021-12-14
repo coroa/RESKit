@@ -137,7 +137,7 @@ class WindWorkflowManager(WorkflowManager):
             A reference to the invoking WindWorkflowManager
         """
 
-        assert "roughness" in self.placements.columns
+        assert "roughness" in self.placements
         assert hasattr(self, "elevated_wind_speed_height")
 
         if consider_boundary_layer_height:

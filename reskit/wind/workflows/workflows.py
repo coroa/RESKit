@@ -216,7 +216,7 @@ def onshore_wind_era5(
     placements,
     era5_path,
     gwa_100m_path,
-    esa_cci_path,
+    esa_cci_path=None,
     output_netcdf_path=None,
     output_variables=None,
 ):
@@ -273,7 +273,8 @@ def onshore_wind_era5(
         real_long_run_average=gwa_100m_path,
     )
 
-    wf.estimate_roughness_from_land_cover(path=esa_cci_path, source_type="cci")
+    if esa_cci_path is not None:
+        wf.estimate_roughness_from_land_cover(path=esa_cci_path, source_type="cci")
 
     wf.logarithmic_projection_of_wind_speeds_to_hub_height(
         consider_boundary_layer_height=True
