@@ -619,10 +619,13 @@ def distribute_workflow(
 
     def submit_placement_groups(placement_groups):
         @delayed
-        def report_completed(s, path):
+        def run_and_report(workflow_function, placements, output_netcdf_path, **kwargs):
+            ret = workflow_function(
+                placements, output_netcdf_path=output_netcdf_path, **kwargs
+            )
             if output_netcdf_path is not None:
-                print(f"  FINISHED: {path}")
-            return s
+                print(f"  FINISHED: {output_netcdf_path}")
+            return ret
 
         for gid, placement_group in enumerate(placement_groups):
             if intermediate_output_dir is not None:
@@ -632,15 +635,14 @@ def distribute_workflow(
                 if skip_existing and isfile(output_netcdf_path):
                     continue
             
-
             else:
                 output_netcdf_path = None
 
-            yield report_completed(
-                delayed(workflow_function)(
-                    placement_group, output_netcdf_path=output_netcdf_path, **kwargs
-                ),
-                output_netcdf_path
+            yield run_and_report(
+                workflow_function,
+                placement_group,
+                output_netcdf_path=output_netcdf_path,
+                **kwargs
             )
 
     results = Parallel(n_jobs=jobs)(submit_placement_groups(placement_groups))
