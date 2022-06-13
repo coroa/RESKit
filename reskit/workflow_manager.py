@@ -618,6 +618,12 @@ def distribute_workflow(
     print("SUBMITTING JOBS")
 
     def submit_placement_groups(placement_groups):
+        @delayed
+        def report_completed(s, path):
+            if output_netcdf_path is not None:
+                print(f"  FINISHED: {path}")
+            return s
+
         for gid, placement_group in enumerate(placement_groups):
             if intermediate_output_dir is not None:
                 output_netcdf_path = join(
@@ -625,18 +631,19 @@ def distribute_workflow(
                 )
                 if skip_existing and isfile(output_netcdf_path):
                     continue
+            
+
             else:
                 output_netcdf_path = None
 
-            yield delayed(workflow_function)(
-                placement_group, output_netcdf_path=output_netcdf_path, **kwargs
+            yield report_completed(
+                delayed(workflow_function)(
+                    placement_group, output_netcdf_path=output_netcdf_path, **kwargs
+                ),
+                output_netcdf_path
             )
 
     results = Parallel(n_jobs=jobs)(submit_placement_groups(placement_groups))
-
-    for result in results:
-        if intermediate_output_dir is not None:
-            print(f"  FINISHED: {result}")
 
     if intermediate_output_dir is None:
         return xarray.concat(results, dim="location").sortby("location")

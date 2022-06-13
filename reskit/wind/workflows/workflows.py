@@ -207,6 +207,8 @@ def offshore_wind_era5_unvalidated(
         )  # TODO: Check values with Dil
     )
 
+    wf.make_mean(["capacity_factor"])
+
     return wf.to_xarray(
         output_netcdf_path=output_netcdf_path, output_variables=output_variables
     )
