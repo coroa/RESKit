@@ -550,6 +550,7 @@ def distribute_workflow(
     max_batch_size: int = None,
     intermediate_output_dir: str = None,
     skip_existing=False,
+    verbose: int = 10,
     **kwargs,
 ) -> xarray.Dataset:
     """Distributes a RESKit simulation workflow across multiple CPUs
@@ -592,6 +593,9 @@ def distribute_workflow(
         If True, then simulation groups will be skipped if there output file already exists
         - !!Use with Caution!! If either the placements or `max_bach_size` changes between simulation attempts, then the simulation groups will not be the same, and thus using this argument will not behave properly
         - Default: False
+    
+    verbose : int, optional
+        If above 10 add progress bar, if above 20 report finished files.
 
     **kwargs:
         All all key word arguments are passed on as constants to each simulation
@@ -615,15 +619,18 @@ def distribute_workflow(
         )
 
     # Do simulations
-    print("SUBMITTING JOBS")
+    if verbose >= 20:
+        print("SUBMITTING JOBS")
 
     def submit_placement_groups(placement_groups):
         @delayed
-        def run_and_report(workflow_function, placements, output_netcdf_path, **kwargs):
+        def run_and_report(
+            workflow_function, placements, output_netcdf_path, verbose, **kwargs
+        ):
             ret = workflow_function(
                 placements, output_netcdf_path=output_netcdf_path, **kwargs
             )
-            if output_netcdf_path is not None:
+            if output_netcdf_path is not None and verbose >= 20:
                 print(f"  FINISHED: {output_netcdf_path}")
             return ret
 
@@ -642,10 +649,13 @@ def distribute_workflow(
                 workflow_function,
                 placement_group,
                 output_netcdf_path=output_netcdf_path,
+                verbose=verbose,
                 **kwargs
             )
 
-    results = Parallel(n_jobs=jobs)(submit_placement_groups(placement_groups))
+    results = Parallel(n_jobs=jobs, verbose=verbose)(
+        submit_placement_groups(placement_groups)
+    )
 
     if intermediate_output_dir is None:
         return xarray.concat(results, dim="location").sortby("location")
