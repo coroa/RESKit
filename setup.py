@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="reskit",
-    version="0.2.2",
+    version="0.2.3",
     author="David Severin Ryberg, Dilara Gulcin Caglayan, Sabrina Schmitt, Roman Kraemer",
-    url="https: // github.com/FZJ-IEK3-VSA/reskit",
+    url="https://github.com/FZJ-IEK3-VSA/reskit",
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "geokit>=1.2.4",
+        "geokit>=1.4.0",
         "numpy",
         "pandas",
         "scipy",
