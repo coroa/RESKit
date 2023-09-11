@@ -1144,7 +1144,7 @@ class SolarWorkflowManager(WorkflowManager):
         )
 
         interpolator = RectBivariateSpline(
-            _temp, _poa, gen["p_mp"].reshape(poaM.shape), kx=3, ky=3
+            _temp, _poa, np.asarray(gen["p_mp"]).reshape(poaM.shape), kx=3, ky=3
         )
         self.sim_data["module_dc_power_at_mpp"] = np.zeros_like(
             self.sim_data["poa_global"]
@@ -1154,7 +1154,7 @@ class SolarWorkflowManager(WorkflowManager):
         )
 
         interpolator = RectBivariateSpline(
-            _temp, _poa, gen["v_mp"].reshape(poaM.shape), kx=3, ky=3
+            _temp, _poa, np.asarray(gen["v_mp"]).reshape(poaM.shape), kx=3, ky=3
         )
         self.sim_data["module_dc_voltage_at_mpp"] = np.zeros_like(
             self.sim_data["poa_global"]
